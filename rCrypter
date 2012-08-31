@@ -1,0 +1,68 @@
+#!/usr/bin/python
+
+#
+# IMPORTS
+#
+from imageHandler.createImage import createImage
+
+import getopt
+import sys
+
+#
+# CONSTANTS
+#
+CREATE_IMAGE = '--create-image'
+MOUNT_IMAGE = "--mount-image"
+LONG_OPTIONS = ('create-image=','mount-image=')
+
+#
+# CODE
+#
+def parseCommandLine(arguments):
+    """
+    Parses command line
+
+    @type  arguments: list
+    @param arguments: list of command line arguments
+
+    @rtype: int
+    @returns: exit status
+    """
+    # get args
+    args = getopt.getopt(arguments, 'v', LONG_OPTIONS)
+
+    # set empty var
+    invalidOption = True
+
+    # iterate over all args
+    for option in args:
+        for arg in option:
+
+            # create image passed: create image
+            if arg[0] == CREATE_IMAGE and arg[1] != '':
+                createImage(arg[1])
+                invalidOption = False
+
+            # mount image passed: mount image
+            if arg[0] == MOUNT_IMAGE and arg[1] != '':
+                # TODO: mount image
+                #mountImage(arg[1])
+                invalidOption = False
+
+        # no option match: show usage and return error
+        if invalidOption == True:
+            print "Usage: rCrypter --create-image <image name> --mount-image <image name>"
+            return 1
+
+    # return success
+    return 0
+# parseCommandLine()
+
+
+#
+# ENTRY POINT
+#
+if __name__ == '__main__':
+    status = parseCommandLine(sys.argv[1:])
+    sys.exit(status)
+
