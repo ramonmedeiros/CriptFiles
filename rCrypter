@@ -3,57 +3,197 @@
 #
 # IMPORTS
 #
-from imageHandler.createImage import createImage
+from imageHandler.createImage import createImage as createImageBase
+from cryptUtils import utils
 
-import getopt
+import argparse
+import commom
+import tempfile
+import os
 import sys
+
 
 #
 # CONSTANTS
 #
 CREATE_IMAGE = '--create-image'
+CREATE_KEYS = '--create-keys'
 MOUNT_IMAGE = "--mount-image"
-LONG_OPTIONS = ('create-image=','mount-image=')
+UMOUNT_IMAGE = "--umount-image"
 
 #
 # CODE
 #
-def parseCommandLine(arguments):
+def checkRoot():
+    """
+    Checks if user is root
+
+    @rtype: int
+    @returns: exit status
+    """
+    # try to get user id using id
+    try:
+        command = os.popen('id -u')
+        output = command.read()
+        command.close()
+    
+    # id cannot be retrieved: warn user
+    except Exception:
+        print "Cannot retrieve user id. To make this work, please run as root."
+
+    # user is not root: abort
+    if output.strip() != '0':
+        print "Please run this tool as root. Aborting."
+        sys.exit(1)
+# checkRoot()
+
+def createImage(path):
+    """
+    Creates a encrypted image
+    
+    @type  path: basestring
+    @param path: path to image
+    """
+    # keys not available: ask user to create one
+    if os.path.exists(utils.PRIVATE_KEY) == False:
+        print "Key not available. Create it."
+        sys.exit(1)
+
+    # load keys
+    key = utils.loadKey()
+
+    # create key
+    createImageBase(path)
+    utils.cryptImage(path, key)
+ 
+    # return success
+    return 0
+# createImage()
+
+def mountImage(imagePath):
+    """
+    Mounts a image
+
+    @type  imagePath: basestring
+    @param imagePath: path to image
+
+    @rtype: int
+    @returns: exit status
+    """
+    # check if path exists
+    if os.path.exists(imagePath) == False:
+        print "Image not found. Aborting."
+        sys.exit(1)
+
+    # load keys
+    key = utils.loadKey()
+
+    # decrypt image
+    utils.decryptImage(imagePath, key)
+
+    # try to mount image
+    try:
+        
+        # mount image
+        tempDir = tempfile.mkdtemp()
+        command = os.popen('mount -o loop %s %s' % (imagePath, tempDir))
+        command.close()
+    
+    # cannot mount: abort
+    except Exception:
+        print "The image could not be mounted. Aborting."
+        sys.exit(1)
+
+    # record image mount
+    commom.recordMount(imagePath, tempDir)
+
+    # report user that the image is mounted
+    print "You can found your image mounted at %s" % tempDir
+# mountImage()
+
+def umountImage(mountedImage):
+    """
+    Umounts a image
+
+    @type  mountedImage: basestring
+    @param mountedImage: path to image
+
+    @rtype: int
+    @returns: exit status
+    """
+    # check if path exists
+    if os.path.exists(mountedImage) == False:
+        print "Image not found. Aborting."
+        sys.exit(1)
+
+    # get mountpoint of image
+    path = commom.searchMounts(mountedImage)
+
+    # try to umount image
+    try:
+        
+        # mount image
+        command = os.popen('umount %s' % path)
+        command.close()
+
+    # cannot mount: abor
+    except Exception:
+        print "The image could not be umounted. Aborting."
+        sys.exit(1)
+
+    # load keys
+    key = utils.loadKey()
+
+    # crypt image
+    utils.cryptImage(mountedImage, key)
+# umountImage()
+
+def parseCommandLine():
     """
     Parses command line
-
-    @type  arguments: list
-    @param arguments: list of command line arguments
 
     @rtype: int
     @returns: exit status
     """
     # get args
-    args = getopt.getopt(arguments, 'v', LONG_OPTIONS)
+    parser = argparse.ArgumentParser()
 
-    # set empty var
-    invalidOption = True
+    # set args
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(CREATE_IMAGE, help="Create a simple image")
+    group.add_argument(CREATE_KEYS, action="store_true", help="Generate the key")
+    group.add_argument(MOUNT_IMAGE, help="Mounts the image")
+    group.add_argument(UMOUNT_IMAGE, help="Umount a passed image")
+    parser.add_argument('-s', '--size', type=int, choices=[512, 1024], help="Set key size")
+    parser.add_argument('-t', '--type', choices=["RSA", "DSA"], help="Type of algorithm")
+    
+    # parse args
+    args = parser.parse_args()
+    
+    # create image
+    if args.create_image != None:
+        createImage(args.create_image)
+        sys.exit(0)
 
-    # iterate over all args
-    for option in args:
-        for arg in option:
+    # create keys
+    elif args.create_keys == True and args.type != None and args.size > 0:
+        utils.createKeys(args.type, args.size)
+        sys.exit(0)
+    
+    # mount image
+    elif args.mount_image != None:
+        mountImage(args.mount_image)
+        sys.exit(0)
 
-            # create image passed: create image
-            if arg[0] == CREATE_IMAGE and arg[1] != '':
-                createImage(arg[1])
-                invalidOption = False
-
-            # mount image passed: mount image
-            if arg[0] == MOUNT_IMAGE and arg[1] != '':
-                # TODO: mount image
-                #mountImage(arg[1])
-                invalidOption = False
-
-        # no option match: show usage and return error
-        if invalidOption == True:
-            print "Usage: rCrypter --create-image <image name> --mount-image <image name>"
-            return 1
-
+    # umount image
+    elif args.umount_image != None:
+        umountImage(args.umount_image)
+        sys.exit(0)
+    
+    # no option passed: show help
+    else:
+        parser.print_help()
+    
     # return success
     return 0
 # parseCommandLine()
@@ -63,6 +203,11 @@ def parseCommandLine(arguments):
 # ENTRY POINT
 #
 if __name__ == '__main__':
-    status = parseCommandLine(sys.argv[1:])
+    
+    # check if user is root
+    checkRoot()
+
+    # do main
+    status = parseCommandLine()
     sys.exit(status)
 
