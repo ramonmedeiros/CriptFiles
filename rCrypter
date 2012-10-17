@@ -70,12 +70,15 @@ def createImage(path):
     return 0
 # createImage()
 
-def mountImage(imagePath):
+def mountImage(imagePath, password = None):
     """
     Mounts a image
 
     @type  imagePath: basestring
     @param imagePath: path to image
+    
+    @type  password: basestring
+    @param password: key password
 
     @rtype: int
     @returns: exit status
@@ -86,10 +89,10 @@ def mountImage(imagePath):
         sys.exit(1)
 
     # load keys
-    key = utils.loadKey()
+    key = utils.loadKey(password)
 
     # decrypt image
-    utils.decryptImage(imagePath, key)
+    utils.decryptImage(imagePath, key, password)
 
     # try to mount image
     try:
@@ -98,7 +101,7 @@ def mountImage(imagePath):
         tempDir = tempfile.mkdtemp()
         command = os.popen('mount -o loop %s %s' % (imagePath, tempDir))
         command.close()
-    
+          
     # cannot mount: abort
     except Exception:
         print "The image could not be mounted. Aborting."
@@ -164,9 +167,10 @@ def parseCommandLine():
     group.add_argument(CREATE_KEYS, action="store_true", help="Generate the key")
     group.add_argument(MOUNT_IMAGE, help="Mounts the image")
     group.add_argument(UMOUNT_IMAGE, help="Umount a passed image")
-    parser.add_argument('-s', '--size', type=int, choices=[512, 1024], help="Set key size")
+    parser.add_argument('-s', '--size', type=int, choices=[1024], help="Set key size")
     parser.add_argument('-t', '--type', choices=["RSA", "DSA"], help="Type of algorithm")
-    
+    parser.add_argument('--password', help="Key password")
+
     # parse args
     args = parser.parse_args()
     
@@ -182,7 +186,7 @@ def parseCommandLine():
     
     # mount image
     elif args.mount_image != None:
-        mountImage(args.mount_image)
+        mountImage(args.mount_image, args.password)
         sys.exit(0)
 
     # umount image
@@ -208,6 +212,5 @@ if __name__ == '__main__':
     checkRoot()
 
     # do main
-    status = parseCommandLine()
-    sys.exit(status)
+    parseCommandLine()
 

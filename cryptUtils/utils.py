@@ -3,6 +3,8 @@
 #
 # IMPORTS
 #
+from cryptFunctionsThread import CrypterThread
+from cryptFunctionsThread import WriterThread
 from M2Crypto import DSA
 from M2Crypto import RSA
 
@@ -77,7 +79,7 @@ def createKeys(algorithm, size):
         answer = raw_input('(Y/N)')
 
         # user does not pretend to create a new one: abort
-        if answer.uppercase() == 'N':
+        if answer.upper() == 'N':
             return 0
 
     # create keys
@@ -118,41 +120,64 @@ def cryptImage(path, key):
         print "Key doesn't exists. Create it."
         sys.exit(1)
 
+    # create empty list
+    readList = {}
+    pool = []
+
     # try to crypt image
     try:
 
         # rename and open images
         newPath = '.' + path
         os.rename(path, newPath)
-        image = open(newPath, 'r')
-        newImage = open(path, 'a')
     
-        # get blocksize
-        size = BLOCKSIZE_CRYPT[key.__len__()]
+        # get file size
+        file = open(newPath)
+        file.seek(0,2)
+        size = int(file.tell())
+        file.close()
 
-        # read file until EOF
-        while True:
-        
-            # read blocksize
-            data = image.read(size)
-        
-            # data is empty: end of file
-            if data == "":
-                break
+        # calculate blocks for each thread
+        blocks = size / BLOCKSIZE_CRYPT[key.__len__()]
+        remaining = size % BLOCKSIZE_CRYPT[key.__len__()]
+        blockPerThread = blocks / 5
+        remaining += blocks % 5
 
-            # crypt image
-            cryptedText = key.public_encrypt(data, RSA.pkcs1_oaep_padding)
+        # create counters
+        start = 0
+        end = 0
 
-            # write new image
-            newImage.write(cryptedText)
-    
-        # close image and delete old one
-        image.close()
-        newImage.close()
-        os.remove(newPath)
+        # create 5 threads to crypt
+        for i in [1,2,3,4,5]:
+            
+            # calculate interval
+            start = end
+            end += blockPerThread
+
+            # create threads
+            pool.append(CrypterThread(readList, newPath, BLOCKSIZE_CRYPT[key.__len__()], start, end, key.public_encrypt))
+
+        # use other thread for remaining blocks
+        pool.append(CrypterThread(readList, newPath, BLOCKSIZE_CRYPT[key.__len__()], end, (end + remaining), key.public_encrypt))
+
+        # create writer threads
+        writer = WriterThread(path, readList, BLOCKSIZE_DECRYPT[key.__len__()])
+
+        # start threads
+        for thread in pool:
+            thread.start()
+        writer.start()
+
+        # wait threads to finish
+        for thread in pool:
+            thread.join()
+        writer.join()
+
+        # remove old file
+        os.remove(newPath)   
     
     # any problem: abort
-    except Exception:
+    except OSError:
         print "Image cannot be crypted. Aborting"
         sys.exit(1)
 
@@ -160,9 +185,12 @@ def cryptImage(path, key):
     return True
 # cryptImage()
 
-def loadKey():
+def loadKey(password = None):
     """
     Reads the key
+
+    @type  password: basestring
+    @param password: key password
 
     @rtype: object
     @returns: key object on success
@@ -172,7 +200,14 @@ def loadKey():
 
     # try to read keys
     try:
-        private = eval(algorithm).load_key(PRIVATE_KEY)
+
+        # password passed: pass to api
+        if password != None:
+            private = eval(algorithm).load_key(PRIVATE_KEY, lambda p: password)
+        
+        # password not passed: ask user
+        else:
+            private = eval(algorithm).load_key(PRIVATE_KEY)
 
     # any problem: report
     except Exception:
@@ -183,7 +218,7 @@ def loadKey():
     return private
 # loadKeys()
 
-def decryptImage(path, key):
+def decryptImage(path, key, password = None):
     """
     Decrypt image
 
@@ -201,42 +236,34 @@ def decryptImage(path, key):
         print "Image not found. Aborting."
         sys.exit(1)
 
+    # create empty list
+    readList = []
+
     # try to decrypt image
     try:
 
         # rename and open images
         newPath = '.' + path
         os.rename(path, newPath)
-        image = open(newPath, 'r')
-        newImage = open(path, 'a')
+ 
+        # create threads
+        #reader = ReaderThread(newPath, readList, BLOCKSIZE_DECRYPT[key.__len__()])
+        writer = WriterThread(path, readList, key.private_decrypt)
         
-        # get blocksize
-        size = BLOCKSIZE_DECRYPT[key.__len__()]
-
-        # decrypt image
-        while True:
+        # start threads
+        #reader.start()
+        writer.start()
         
-            # read data
-            data = image.read(size)
-     
-            # data is empty: end of file
-            if data == "":
-                break
+        # wait threads to stop
+        reader.join()
+        writer.join()
 
-            # crypt image
-            cryptedText = key.private_decrypt(data, RSA.pkcs1_oaep_padding)
-
-            # append to new image
-            newImage.write(cryptedText)
-
-        # close image and remove old one
-        image.close()
-        newImage.close()
+        # remove old file
         os.remove(newPath)
     
     # any problem: abort
     except Exception:
-        print "Image cannot be crypted. Aborting."
+        print "Image cannot be decrypted. Aborting."
         sys.exit(1)
 
     # return success

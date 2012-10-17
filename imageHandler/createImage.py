@@ -4,15 +4,16 @@
 # IMPORTS
 #
 import os
+import time
 import sys
 
 
 #
 # CONSTANTS
 #
-DD_COMMAND = 'dd if=/dev/zero of=%s bs=1024 count=%d'
-INITIAL_SIZE = 1000
-MAKE_EXT3 = 'mkfs -t ext3 -F %s'
+DD_COMMAND = 'dd if=/dev/zero of=%s bs=1024 count=%d > /dev/null'
+INITIAL_SIZE = 500
+MAKE_EXT3 = 'mkfs -t ext3 -F %s > /dev/null'
 
 
 #
@@ -47,6 +48,9 @@ def createImage(path):
         args = str(DD_COMMAND % (path, INITIAL_SIZE))
         cmd = os.popen(args)
         cmd.close()
+
+        # wait
+        time.sleep(1)
 
         # create ext3
         args = str(MAKE_EXT3 % path)
